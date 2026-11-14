@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 # Configurazione della pagina
 st.set_page_config(page_title="LD2410C IoT Dashboard", page_icon="📡", layout="wide")
@@ -71,32 +72,45 @@ try:
 
         st.divider()
 
-        # --- SEZIONE 4 GRAFICI SEPARATI ---
+        # --- SEZIONE 4 GRAFICI PLOTLY PROFESSIONALI (GRIGLIA 2x2) ---
         if len(col_names) >= 5:
-            st.subheader("📈 Analisi Dettagliata (Grafici Separati)")
+            st.subheader("📈 Analisi Dettagliata (Grafici Avanzati)")
 
-            # Pulizia preventiva dei dati per i grafici
             df_chart = df.copy()
             for c_idx in [1, 2, 3, 4]:
                 if len(col_names) > c_idx:
                     df_chart[col_names[c_idx]] = pd.to_numeric(df_chart[col_names[c_idx]], errors='coerce')
 
-            # Griglia 2x2 per disporre i 4 grafici in modo ordinato
+            # Creiamo una colonna temporale fittizia o usiamo l'indice come asse X pulito
+            df_chart['Index'] = df_chart.reset_index().index
+
             g_col1, g_col2 = st.columns(2)
 
             with g_col1:
-                st.markdown(f"**1. {col_names[2]} (Distanza)**")
-                st.line_chart(df_chart[[col_names[2]]], height=220)
+                # 1. Distanza
+                fig1 = px.line(df_chart, x='Index', y=col_names[2], title=f"📍 {col_names[2]} (cm)", template="plotly_dark")
+                fig1.update_traces(line_color='#00ffcc', line_width=2)
+                fig1.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(fig1, use_container_width=True)
 
-                st.markdown(f"**3. {col_names[4]} (Energia Static)**")
-                st.line_chart(df_chart[[col_names[4]]], height=220)
+                # 3. Energia Static
+                fig3 = px.line(df_chart, x='Index', y=col_names[4], title=f"🧘 {col_names[4]}", template="plotly_dark")
+                fig3.update_traces(line_color='#ff00ff', line_width=2)
+                fig3.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(fig3, use_container_width=True)
 
             with g_col2:
-                st.markdown(f"**2. {col_names[3]} (Energia Moving)**")
-                st.line_chart(df_chart[[col_names[3]]], height=220)
+                # 2. Energia Moving
+                fig2 = px.line(df_chart, x='Index', y=col_names[3], title=f"🚶 {col_names[3]}", template="plotly_dark")
+                fig2.update_traces(line_color='#ff9900', line_width=2)
+                fig2.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(fig2, use_container_width=True)
 
-                st.markdown(f"**4. {col_names[1]} (Stato Rilevamento)**")
-                st.line_chart(df_chart[[col_names[1]]], height=220)
+                # 4. Stato Rilevamento
+                fig4 = px.line(df_chart, x='Index', y=col_names[1], title=f"👁️ {col_names[1]}", template="plotly_dark")
+                fig4.update_traces(line_color='#3399ff', line_width=2)
+                fig4.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(fig4, use_container_width=True)
 
         # Tabella dati grezzi
         with st.expander("🔍 Visualizza tabella dati grezzi (ultimi record)"):
