@@ -1,124 +1,221 @@
+import time
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Configurazione della pagina
-st.set_page_config(page_title="LD2410C IoT Dashboard", page_icon="📡", layout="wide")
+st.set_page_config(
+    page_title="LD2410C IoT Dashboard",
+    page_icon="📡",
+    layout="wide",
+)
 
 st.title("📡 Monitoraggio Presenze & Radar LD2410C")
-st.markdown("Dashboard in tempo reale collegata al sistema IoT (ESP8266 + ESP32 Gateway + Google Sheets).")
+st.markdown(
+    "Dashboard in tempo reale collegata al sistema IoT "
+    "(ESP8266 + ESP32 Gateway + Google Sheets)."
+)
 
-# Portata massima configurata sul sensore LD2410C (in cm)
 MAX_RANGE_CM = 600.0
+SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vTW9W95wvrqKa3ArJlvvQJAb1k1GYVf5e98D-JacPJRY536AHFRVxxTRb6XPmjaZ5ZdP5sm8rzstXon/"
+    "pub?gid=0&single=true&output=csv"
+)
 
-# Funzione per caricare i dati dal Google Sheet pubblico
-@st.cache_data(ttl=10)
+# Possibili nomi di colonna, per rendere la dashboard resistente a variazioni dell'header
+COLUMN_CANDIDATES = {
+    "presence": ["presenza", "stato", "presence", "rilevamento"],
+    "distance": ["distanza", "distance", "distanza_cm", "target_distance"],
+    "moving": ["moving", "energia_moving", "moving_energy"],
+    "static": ["static", "energia_static", "static_energy"],
+}
+
+
+@st.cache_data(ttl=10, show_spinner=False)
 def load_data():
-    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW9W95wvrqKa3ArJlvvQJAb1k1GYVf5e98D-JacPJRY536AHFRVxxTRb6XPmjaZ5ZdP5sm8rzstXon/pub?gid=0&single=true&output=csv"
-    df = pd.read_csv(url)
-    return df
+    return pd.read_csv(SHEET_URL)
+
+
+def find_column(df, candidates):
+    normalized = {str(c).strip().lower(): c for c in df.columns}
+    for candidate in candidates:
+        if candidate in normalized:
+            return normalized[candidate]
+    return None
+
+
+def to_number(value, default=None):
+    try:
+        result = float(value)
+        return result if pd.notna(result) else default
+    except (TypeError, ValueError):
+        return default
+
 
 try:
     df = load_data()
 
-    if df.empty or len(df.columns) == 0:
+    if df.empty:
         st.warning("Il foglio Google Sheets è attualmente vuoto o in attesa di dati dal sensore.")
+        st.stop()
+
+    df.columns = df.columns.str.strip()
+    cols = {
+        key: find_column(df, candidates)
+        for key, candidates in COLUMN_CANDIDATES.items()
+    }
+
+    missing = [key for key, col in cols.items() if col is None]
+    if missing:
+        st.warning(
+            "Colonne non riconosciute nel foglio: "
+            + ", ".join(missing)
+            + f". Colonne disponibili: {', '.join(df.columns)}"
+        )
+
+    last = df.iloc[-1]
+
+    st.subheader("Ultimo Stato Rilevato")
+    c1, c2, c3, c4 = st.columns(4)
+
+    presence_value = to_number(last[cols["presence"]], 0) if cols["presence"] else 0
+    distance_value = to_number(last[cols["distance"]], 0) if cols["distance"] else 0
+    moving_value = last[cols["moving"]] if cols["moving"] else "N/D"
+    static_value = last[cols["static"]] if cols["static"] else "N/D"
+
+    with c1:
+        st.metric("Stato Rilevamento", "Presenza" if presence_value == 1 else "Assenza")
+
+    with c2:
+        st.metric("Distanza Target", f"{distance_value:.0f} cm")
+
+    with c3:
+        st.metric("Energia Moving", moving_value)
+
+    with c4:
+        st.metric("Energia Static", static_value)
+
+    st.markdown("### 🎯 Indicatore di Prossimità Radar")
+
+    if presence_value != 1 or distance_value <= 0:
+        proximity = 0.0
+        status = "⚪ Nessun target nel raggio d'azione"
     else:
-        # Pulisce i nomi delle colonne da spazi indesiderati
-        df.columns = df.columns.str.strip()
-        ultima_riga = df.iloc[-1]
-        col_names = list(df.columns)
+        proximity = 1 - min(max(distance_value / MAX_RANGE_CM, 0.0), 1.0)
 
-        st.subheader("Ultimo Stato Rilevato")
-        col1, col2, col3, col4 = st.columns(4)
+        if distance_value < 100:
+            status = f"🔴 Rilevamento ravvicinato — {distance_value:.0f} cm"
+        elif distance_value < 300:
+            status = f"🟠 Media distanza — {distance_value:.0f} cm"
+        else:
+            status = f"🟢 Lunga distanza — {distance_value:.0f} cm"
 
-        with col1:
-            val_presenza = ultima_riga.iloc[1] if len(col_names) > 1 else "N/D"
-            st.metric("Stato Rilevamento", val_presenza)
+    st.progress(proximity, text=status)
 
-        with col2:
-            val_dist = ultima_riga.iloc[2] if len(col_names) > 2 else 0
-            st.metric("Distanza Target", f"{val_dist} cm")
+    st.divider()
 
-        with col3:
-            val_mov = ultima_riga.iloc[3] if len(col_names) > 3 else "N/D"
-            st.metric("Energia Moving", val_mov)
+    numeric_cols = [cols[key] for key in ["distance", "moving", "static"] if cols[key]]
+    df_chart = df.copy()
 
-        with col4:
-            val_stat = ultima_riga.iloc[4] if len(col_names) > 4 else "N/D"
-            st.metric("Energia Static", val_stat)
+    for col in numeric_cols:
+        df_chart[col] = pd.to_numeric(df_chart[col], errors="coerce")
 
-        # --- INDICATORE VISIVO DI PROSSIMITÀ (GAUGE) ---
-        st.markdown("### 🎯 Indicatore di Prossimità Radar")
-        try:
-            distanza_num = float(val_dist)
-            presenza_num = int(float(val_presenza)) if val_presenza != "N/D" else 0
+    if cols["presence"]:
+        df_chart[cols["presence"]] = pd.to_numeric(
+            df_chart[cols["presence"]], errors="coerce"
+        )
 
-            if presenza_num == 0 or distanza_num <= 0:
-                progresso = 0.0
-                stato_zona = "⚪ Nessun target nel raggio d'azione"
-            else:
-                progresso = min(max(distanza_num / MAX_RANGE_CM, 0.0), 1.0)
-                if distanza_num < 100:
-                    stato_zona = f"🔴 Rilevamento ravvicinato ({int(distanza_num)} cm / {int(MAX_RANGE_CM)} cm)"
-                elif distanza_num < 300:
-                    stato_zona = f"🟠 Media distanza ({int(distanza_num)} cm / {int(MAX_RANGE_CM)} cm)"
-                else:
-                    stato_zona = f"🟢 Lunga distanza ({int(distanza_num)} cm / {int(MAX_RANGE_CM)} cm)"
+    # Usa il timestamp se esiste, altrimenti l'indice progressivo
+    time_col = find_column(
+        df,
+        ["timestamp", "data_ora", "data/ora", "time", "datetime", "data"],
+    )
+    x_col = time_col if time_col else df_chart.index
 
-            st.progress(progresso, text=stato_zona)
-        except (ValueError, TypeError):
-            st.info("In attesa di valori numerici validi per la distanza.")
+    if numeric_cols or cols["presence"]:
+        st.subheader("📈 Analisi Dettagliata")
 
-        st.divider()
+        left, right = st.columns(2)
 
-        # --- SEZIONE 4 GRAFICI PLOTLY PROFESSIONALI (GRIGLIA 2x2) ---
-        if len(col_names) >= 5:
-            st.subheader("📈 Analisi Dettagliata (Grafici Avanzati)")
+        charts = []
 
-            df_chart = df.copy()
-            for c_idx in [1, 2, 3, 4]:
-                if len(col_names) > c_idx:
-                    df_chart[col_names[c_idx]] = pd.to_numeric(df_chart[col_names[c_idx]], errors='coerce')
+        if cols["distance"]:
+            charts.append(
+                (
+                    left,
+                    cols["distance"],
+                    "📍 Distanza target (cm)",
+                    "#00ffcc",
+                )
+            )
 
-            # Creiamo una colonna temporale fittizia o usiamo l'indice come asse X pulito
-            df_chart['Index'] = df_chart.reset_index().index
+        if cols["moving"]:
+            charts.append(
+                (
+                    right,
+                    cols["moving"],
+                    "🚶 Energia Moving",
+                    "#ff9900",
+                )
+            )
 
-            g_col1, g_col2 = st.columns(2)
+        if cols["static"]:
+            charts.append(
+                (
+                    left,
+                    cols["static"],
+                    "🧘 Energia Static",
+                    "#ff00ff",
+                )
+            )
 
-            with g_col1:
-                # 1. Distanza
-                fig1 = px.line(df_chart, x='Index', y=col_names[2], title=f"📍 {col_names[2]} (cm)", template="plotly_dark")
-                fig1.update_traces(line_color='#00ffcc', line_width=2)
-                fig1.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
-                st.plotly_chart(fig1, use_container_width=True)
+        if cols["presence"]:
+            charts.append(
+                (
+                    right,
+                    cols["presence"],
+                    "👁️ Stato rilevamento",
+                    "#3399ff",
+                )
+            )
 
-                # 3. Energia Static
-                fig3 = px.line(df_chart, x='Index', y=col_names[4], title=f"🧘 {col_names[4]}", template="plotly_dark")
-                fig3.update_traces(line_color='#ff00ff', line_width=2)
-                fig3.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
-                st.plotly_chart(fig3, use_container_width=True)
+        for container, y_col, title, color in charts:
+            fig = px.line(
+                df_chart,
+                x=x_col,
+                y=y_col,
+                title=title,
+                template="plotly_dark",
+            )
+            fig.update_traces(line_color=color, line_width=2)
+            fig.update_layout(
+                height=280,
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
+            container.plotly_chart(fig, use_container_width=True)
 
-            with g_col2:
-                # 2. Energia Moving
-                fig2 = px.line(df_chart, x='Index', y=col_names[3], title=f"🚶 {col_names[3]}", template="plotly_dark")
-                fig2.update_traces(line_color='#ff9900', line_width=2)
-                fig2.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
-                st.plotly_chart(fig2, use_container_width=True)
+    with st.expander("🔍 Visualizza tabella dati grezzi (ultimi record)"):
+        st.dataframe(df.tail(50), use_container_width=True)
 
-                # 4. Stato Rilevamento
-                fig4 = px.line(df_chart, x='Index', y=col_names[1], title=f"👁️ {col_names[1]}", template="plotly_dark")
-                fig4.update_traces(line_color='#3399ff', line_width=2)
-                fig4.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10))
-                st.plotly_chart(fig4, use_container_width=True)
+    st.divider()
 
-        # Tabella dati grezzi
-        with st.expander("🔍 Visualizza tabella dati grezzi (ultimi record)"):
-            st.dataframe(df.tail(50), use_container_width=True)
+    auto_refresh = st.toggle("🔄 Aggiornamento automatico", value=False)
+    refresh_seconds = st.slider(
+        "Intervallo di aggiornamento",
+        min_value=5,
+        max_value=120,
+        value=15,
+        step=5,
+        disabled=not auto_refresh,
+    )
+
+    if auto_refresh:
+        time.sleep(refresh_seconds)
+        st.rerun()
 
 except Exception as e:
     st.error(f"Errore nel caricamento o elaborazione dei dati: {e}")
 
-# Pulsante per forzare il refresh manuale
-if st.button("🔄 Aggiorna Dati"):
+if st.button("🔄 Aggiorna ora"):
+    st.cache_data.clear()
     st.rerun()
