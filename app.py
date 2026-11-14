@@ -29,8 +29,7 @@ COLUMN_CANDIDATES = {
 }
 
 
-# Fix 2: TTL cache allineato a 5 secondi
-@st.cache_data(ttl=5, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def load_data():
     return pd.read_csv(SHEET_URL)
 
@@ -179,7 +178,6 @@ def radar_section():
         if samples != "Tutti":
             df_chart = df_chart.tail(int(samples))
 
-        # Fix 1 & Nota pratica: Ricerca, conversione e pulizia del timestamp
         time_col = find_column(
             df,
             [
@@ -192,17 +190,7 @@ def radar_section():
             ],
         )
 
-        if time_col:
-            df_chart[time_col] = pd.to_datetime(
-                df_chart[time_col],
-                errors="coerce",
-            )
-            df_chart = df_chart.dropna(subset=[time_col]).sort_values(time_col)
-            x_col = time_col
-        else:
-            df_chart = df_chart.reset_index(drop=True)
-            df_chart["Campione"] = df_chart.index + 1
-            x_col = "Campione"
+        x_col = time_col if time_col else df_chart.index
 
         if numeric_cols or cols["presence"]:
             st.subheader("📈 Analisi Dettagliata")
