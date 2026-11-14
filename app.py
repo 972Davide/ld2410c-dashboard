@@ -256,31 +256,21 @@ def radar_section():
         if samples != "Tutti":
             df_chart = df_chart.tail(int(samples))
 
+        # Gestione robusta della colonna temporale con fallback automatico
         time_column = find_column(
             df,
             TIME_COLUMN_CANDIDATES,
         )
 
+        x_column = None
         if time_column:
-            df_chart[time_column] = pd.to_datetime(
-                df_chart[time_column],
-                errors="coerce",
-            )
+            parsed_dates = pd.to_datetime(df_chart[time_column], errors="coerce")
+            if parsed_dates.notna().sum() > 0:
+                df_chart[time_column] = parsed_dates
+                df_chart = df_chart.dropna(subset=[time_column]).sort_values(time_column)
+                x_column = time_column
 
-            df_chart = df_chart.dropna(
-                subset=[time_column]
-            ).sort_values(time_column)
-
-            if df_chart.empty:
-                st.warning(
-                    "La colonna temporale è presente, ma non contiene "
-                    "date/orari validi. I grafici temporali non possono "
-                    "essere generati."
-                )
-                return
-
-            x_column = time_column
-        else:
+        if x_column is None:
             df_chart = df_chart.reset_index(drop=True)
             df_chart["Campione"] = df_chart.index + 1
             x_column = "Campione"
