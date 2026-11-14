@@ -57,7 +57,6 @@ try:
                 progresso = 0.0
                 stato_zona = "⚪ Nessun target nel raggio d'azione"
             else:
-                # Limita il valore tra 0.0 e 1.0 per evitare errori nella progress bar
                 progresso = min(max(distanza_num / MAX_RANGE_CM, 0.0), 1.0)
                 if distanza_num < 100:
                     stato_zona = f"🔴 Rilevamento ravvicinato ({int(distanza_num)} cm / {int(MAX_RANGE_CM)} cm)"
@@ -72,24 +71,30 @@ try:
 
         st.divider()
 
-       # Sezione Grafici Interattivi Avanzati
+        # Sezione Grafici Interattivi
         if len(col_names) >= 5:
             st.subheader("📊 Storico Energia Target (Moving & Static)")
             st.line_chart(df[[col_names[3], col_names[4]]], height=300)
 
             st.subheader("🎯 Grafico a Dispersione: Distanza & Presenza nel Tempo")
-            
-            # Creiamo un sottoinsieme pulito per il grafico a dispersione
-            # Usiamo la colonna della distanza (col_names[2]) e coloriamo per stato presenza (col_names[1])
             df_chart = df.copy()
             df_chart[col_names[2]] = pd.to_numeric(df_chart[col_names[2]], errors='coerce')
             df_chart[col_names[1]] = pd.to_numeric(df_chart[col_names[1]], errors='coerce')
 
-            # Mostriamo il grafico a dispersione nativo di Streamlit
-            # Mettiamo sull'asse Y la distanza e coloriamo in base allo stato di presenza
             st.scatter_chart(
                 df_chart,
                 y=col_names[2],
-                color=col_names[1], # Varia il colore in base allo stato (0 o 1)
+                color=col_names[1],
                 height=300
             )
+
+        # Tabella dati grezzi
+        with st.expander("🔍 Visualizza tabella dati grezzi (ultimi record)"):
+            st.dataframe(df.tail(50), use_container_width=True)
+
+except Exception as e:
+    st.error(f"Errore nel caricamento o elaborazione dei dati: {e}")
+
+# Pulsante per forzare il refresh manuale
+if st.button("🔄 Aggiorna Dati"):
+    st.rerun()
