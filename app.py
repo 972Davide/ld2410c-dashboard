@@ -71,22 +71,32 @@ try:
 
         st.divider()
 
-        # Sezione Grafici Interattivi
+        # --- SEZIONE 4 GRAFICI SEPARATI ---
         if len(col_names) >= 5:
-            st.subheader("📊 Storico Energia Target (Moving & Static)")
-            st.line_chart(df[[col_names[3], col_names[4]]], height=300)
+            st.subheader("📈 Analisi Dettagliata (Grafici Separati)")
 
-            st.subheader("🎯 Grafico a Dispersione: Distanza & Presenza nel Tempo")
+            # Pulizia preventiva dei dati per i grafici
             df_chart = df.copy()
-            df_chart[col_names[2]] = pd.to_numeric(df_chart[col_names[2]], errors='coerce')
-            df_chart[col_names[1]] = pd.to_numeric(df_chart[col_names[1]], errors='coerce')
+            for c_idx in [1, 2, 3, 4]:
+                if len(col_names) > c_idx:
+                    df_chart[col_names[c_idx]] = pd.to_numeric(df_chart[col_names[c_idx]], errors='coerce')
 
-            st.scatter_chart(
-                df_chart,
-                y=col_names[2],
-                color=col_names[1],
-                height=300
-            )
+            # Griglia 2x2 per disporre i 4 grafici in modo ordinato
+            g_col1, g_col2 = st.columns(2)
+
+            with g_col1:
+                st.markdown(f"**1. {col_names[2]} (Distanza)**")
+                st.line_chart(df_chart[[col_names[2]]], height=220)
+
+                st.markdown(f"**3. {col_names[4]} (Energia Static)**")
+                st.line_chart(df_chart[[col_names[4]]], height=220)
+
+            with g_col2:
+                st.markdown(f"**2. {col_names[3]} (Energia Moving)**")
+                st.line_chart(df_chart[[col_names[3]]], height=220)
+
+                st.markdown(f"**4. {col_names[1]} (Stato Rilevamento)**")
+                st.line_chart(df_chart[[col_names[1]]], height=220)
 
         # Tabella dati grezzi
         with st.expander("🔍 Visualizza tabella dati grezzi (ultimi record)"):
