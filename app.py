@@ -10,8 +10,7 @@ st.markdown("Dashboard in tempo reale collegata al sistema IoT (ESP8266 + ESP32 
 # Funzione per caricare i dati dal Google Sheet pubblico
 @st.cache_data(ttl=10)
 def load_data():
-    sheet_id = "1lR5DCBzQqTjkePk7SWaH380RehClI1wFAnYeWICu8c"
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid=0"
+    url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW9W95wvrqKa3ArJlvvQJAb1k1GYVf5e98D-JacPJRY536AHFRVxxTRb6XPmjaZ5ZdP5sm8rzstXon/pub?gid=0&single=true&output=csv"
     df = pd.read_csv(url)
     return df
 
